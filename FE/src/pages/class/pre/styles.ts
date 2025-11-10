@@ -9,6 +9,8 @@ export const TOOLBAR_GAP = 12;
 
 export const PANEL_FIXED_H = `calc(100dvh - 120px - ${TOOLBAR_H}px - ${TOOLBAR_GAP}px - env(safe-area-inset-bottom, 0px))`;
 
+export const PANEL_FIXED_H_LIVE = `calc(100dvh - 250px - ${TOOLBAR_H}px - ${TOOLBAR_GAP}px - env(safe-area-inset-bottom, 0px))`;
+
 export const Wrap = styled.section`
   --ui-scale-effective: calc(var(--ui-scale, 1));
   min-height: 100dvh;

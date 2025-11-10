@@ -171,7 +171,7 @@ export default function PreClass() {
     });
   };
 
-  // ✅ 강의 시작 → 라이브 페이지로 이동
+  // 강의 시작 → 라이브 페이지로 이동
   const onStartClass = () => {
     if (!docIdNum) {
       toast.error("문서가 없어 강의를 시작할 수 없어요.");
@@ -179,13 +179,12 @@ export default function PreClass() {
       return;
     }
     announce("강의가 시작되었습니다. 라이브 화면으로 이동합니다.");
-    // LiveClass는 state의 docId/totalPages를 우선 사용하므로 같이 전달
-    // 라우트가 /class/live/:docId 라면 아래처럼 사용
     navigate(`/lecture/doc/${docIdNum}/live/`, {
       state: {
         docId: docIdNum,
         totalPages: totalPages ?? null,
         navTitle: state?.navTitle ?? "라이브",
+        autoRecord: true,
       },
       replace: false,
     });

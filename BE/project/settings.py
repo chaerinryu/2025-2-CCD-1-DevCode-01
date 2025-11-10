@@ -112,7 +112,6 @@ DATABASES = {
 
 # Google Cloud Key 환경변수 등록
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-GCP_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 
 # AWS S3 환경변수 등록
 AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")

@@ -1,93 +1,13 @@
-import tempfile
-import wave
-from google.cloud import speech, storage
+from google.cloud import speech
 from google.cloud import texttospeech
 import boto3
 from django.conf import settings
 import io, os
 import uuid
 from datetime import datetime, timedelta
-import numpy as np
+from mutagen import File
 
 from users.models import User
-
-def upload_to_gcs(file_bytes: bytes, filename: str, bucket_name: str) -> str:
-    """GCS 버킷에 파일 업로드 후 URI 반환"""
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(f"stt/{filename}")
-    blob.upload_from_string(file_bytes)
-    return f"gs://{bucket_name}/stt/{filename}"
-
-def split_audio_on_silence(wav_bytes: bytes, silence_threshold=150, min_silence_len=2000):
-    """
-    WAV 파일을 무음 기준으로 분리하는 함수
-    - silence_threshold: 무음 판단 기준 (샘플 진폭)
-    - min_silence_len: 무음 길이 기준 (ms)
-    """
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        tmp.write(wav_bytes)
-        tmp.flush()
-        wav_path = tmp.name
-
-    with wave.open(wav_path, "rb") as wf:
-        rate = wf.getframerate()
-        channels = wf.getnchannels()
-        sampwidth = wf.getsampwidth()
-        n_frames = wf.getnframes()
-        frames = wf.readframes(n_frames)
-
-    # 16-bit PCM만 지원(일반적). 그 외는 안전하게 전체를 하나로 반환.
-    if sampwidth != 2:
-        return [wav_path], rate  # 분할 불가 → 통짜로 처리
-
-    audio = np.frombuffer(frames, dtype=np.int16)
-    if channels > 1:
-        audio = audio.reshape(-1, channels)
-        # 스테레오면 두 채널의 평균 절대값으로 무음 판단
-        mono = audio.mean(axis=1).astype(np.int16)
-    else:
-        mono = audio
-
-    abs_audio = np.abs(mono).astype(np.int32)
-    silence_len = int((min_silence_len / 1000.0) * rate)
-
-    silent_ranges = []
-    start = None
-    for i, v in enumerate(abs_audio):
-        if v < silence_threshold:
-            if start is None:
-                start = i
-        else:
-            if start is not None and (i - start) >= silence_len:
-                silent_ranges.append((start, i))
-            start = None
-    # 분할 포인트 구성
-    split_points = [0] + [end for (_, end) in silent_ranges] + [len(mono)]
-
-    chunks = []
-    for i in range(len(split_points) - 1):
-        s, e = split_points[i], split_points[i+1]
-        if e - s < int(0.5 * rate):  # 0.5초 미만 chunk는 스킵
-            continue
-        # 원본 채널수 유지해서 파일로 다시 씀
-        chunk_frames = audio[s*channels:e*channels] if channels > 1 else audio[s:e]
-        out = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        with wave.open(out.name, "wb") as ow:
-            ow.setnchannels(channels)
-            ow.setsampwidth(sampwidth)
-            ow.setframerate(rate)
-            ow.writeframes(chunk_frames.tobytes())
-        chunks.append(out.name)
-
-    # 분할이 전혀 안 되었으면 원본 wav 그대로 사용
-    if not chunks:
-        chunks = [wav_path]
-    else:
-        # 원본 temp는 분할이 됐으면 제거
-        os.remove(wav_path)
-
-    return chunks, rate
 
 def speech_to_text(audio_file) -> str:
     """
@@ -98,59 +18,44 @@ def speech_to_text(audio_file) -> str:
     client = speech.SpeechClient()
 
     # 1️⃣ 메모리에서 파일 내용 바로 읽기
-    audio_file.seek(0)
     content = audio_file.read()
-    audio_file.seek(0)
 
     if len(content) < 10000:  # 대략 1초 이하 (10KB 미만)
         raise ValueError("음성 파일이 너무 짧습니다. 1초 이상 길이의 파일을 업로드해주세요.")
 
+
     # 2️⃣ 확장자에 따라 인코딩 설정
     filename = audio_file.name.lower()
-    # if filename.endswith(".mp3"):
-    #     format_type = "mp3"
-    #     encoding = speech.RecognitionConfig.AudioEncoding.MP3
-    if filename.endswith(".wav"):
-        format_type = "wav"
+    if filename.endswith(".mp3"):
+        encoding = speech.RecognitionConfig.AudioEncoding.MP3
+        sample_rate = 16000
+    elif filename.endswith(".wav"):
         encoding = speech.RecognitionConfig.AudioEncoding.LINEAR16
+        sample_rate = 16000
     else:
-        raise ValueError("지원하지 않는 오디오 형식입니다. (wav만 가능)")
+        raise ValueError("지원하지 않는 오디오 형식입니다. (mp3 또는 wav만 가능)")
 
-    # 무음 기준 분리
-    chunks, rate = split_audio_on_silence(content)
-        
+    # 3️⃣ Google STT 요청
+    audio = speech.RecognitionAudio(content=content)
+
     config = speech.RecognitionConfig(
         encoding=encoding,
+        sample_rate_hertz=sample_rate,
         language_code="ko-KR",
-        sample_rate_hertz=rate,
-        enable_separate_recognition_per_channel=False,
-        model="latest_long",
+        model="default",
         use_enhanced=True,
-        enable_automatic_punctuation=True
+        enable_automatic_punctuation=True,
     )
 
-    transcript = ""
+    response = client.recognize(config=config, audio=audio)
 
-    for chunk in chunks:
-        with open(chunk, "rb") as f:
-            chunk_bytes = f.read()
+    # 4️⃣ 결과 텍스트 추출
+    if not response.results:
+        raise ValueError("음성 인식 결과가 없습니다. 음성이 너무 짧거나 인식되지 않았습니다.")
+    
+    transcript = response.results[0].alternatives[0].transcript.strip()
 
-        if len(chunk_bytes) < 1024 * 1024:
-            audio = speech.RecognitionAudio(content=chunk_bytes)
-            response = client.recognize(config=config, audio=audio)
-        else:
-            gcs_uri = upload_to_gcs(chunk_bytes, f"{uuid.uuid4()}.{format_type}", settings.GCP_BUCKET_NAME)
-            audio = speech.RecognitionAudio(uri=gcs_uri)
-            operation = client.long_running_recognize(config=config, audio=audio)
-            response = operation.result(timeout=900)
-
-        if response.results:
-            text = " ".join([r.alternatives[0].transcript.strip() for r in response.results])
-            transcript += text + " "
-
-        os.remove(chunk)
-
-    if not transcript or transcript.strip() == "":
+    if len(transcript) == 0:
         raise ValueError("인식된 텍스트가 비어 있습니다.")
 
     return transcript
@@ -290,32 +195,12 @@ def time_to_seconds(hhmmss: str) -> float:
     
 def get_duration(audio):
     audio.seek(0)
-    filename = getattr(audio, "name", "").lower()
+    audio_obj = File(audio)
 
-    # ✅ WAV 파일은 wave 모듈로 직접 계산
-    if filename.endswith(".wav"):
-        try:
-            audio.seek(0)
-            with wave.open(audio, "rb") as wav_file:
-                frames = wav_file.getnframes()
-                rate = wav_file.getframerate()
-                duration_sec = round(frames / float(rate), 2)
-                duration = str(timedelta(seconds=int(duration_sec)))
-                return duration_sec, duration
-        except Exception as e:
-            raise ValueError(f"WAV 길이 계산 실패: {e}")
+    if not audio_obj or not hasattr(audio_obj, "info") or not hasattr(audio_obj.info, "length"):
+        raise ValueError("오디오 파일의 길이를 계산할 수 없습니다.")
 
-    # ✅ MP3 파일
-    # try:
-    #     audio.seek(0)
-    #     audio_obj = File(audio)
-    #     if audio_obj and hasattr(audio_obj, "info") and hasattr(audio_obj.info, "length"):
-    #         rate = int(getattr(audio_obj.info, "sample_rate", 16000))
-    #         channels = getattr(audio_obj.info, "channels", 1)
-    #         duration_sec = round(audio_obj.info.length, 2)
-    #         duration = str(timedelta(seconds=int(duration_sec)))
-    #         return duration_sec, duration, rate, channels
-    #     else:
-    #         raise ValueError("오디오 파일의 길이를 계산할 수 없습니다.")
-    # except Exception as e:
-    #     raise ValueError(f"오디오 길이 계산 실패: {e}")
+    duration_sec = round(audio_obj.info.length, 2)
+    duration = str(timedelta(seconds=int(duration_sec)))
+
+    return duration_sec, duration

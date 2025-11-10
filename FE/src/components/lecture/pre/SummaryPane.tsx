@@ -8,6 +8,7 @@ type Props = {
   sidePaneRef: React.RefObject<HTMLDivElement | null>;
   sumAudioRef: React.RefObject<HTMLAudioElement | null>;
   stack: boolean;
+  panelHeight?: string;
 };
 
 export default function SummaryPane({
@@ -16,11 +17,13 @@ export default function SummaryPane({
   sidePaneRef,
   sumAudioRef,
   stack,
+  panelHeight,
 }: Props) {
   return (
     <Pane
       ref={sidePaneRef}
       $stack={stack}
+      $height={panelHeight}
       role="complementary"
       aria-label="요약"
       tabIndex={0}
@@ -47,7 +50,7 @@ export default function SummaryPane({
 }
 
 /* styled */
-const Pane = styled.aside<{ $stack: boolean }>`
+const Pane = styled.aside<{ $stack: boolean; $height?: string }>`
   position: ${({ $stack }) => ($stack ? "static" : "sticky")};
   top: 16px;
   background: var(--c-white);
@@ -55,10 +58,10 @@ const Pane = styled.aside<{ $stack: boolean }>`
   border: 1px solid #e7eef6;
   border-radius: 12px;
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
-  height: ${PANEL_FIXED_H};
+  height: ${({ $height }) => $height ?? PANEL_FIXED_H};
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: scroll;
   ${({ $stack }) => $stack && `order:2;`} @media (max-width:900px) {
     order: 2;
   }

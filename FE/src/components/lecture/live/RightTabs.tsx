@@ -1,6 +1,10 @@
-// src/components/lecture/live/RightTabs.tsx
-import React, { useEffect, useId, useRef, useState } from "react";
+import React, { useId, useState } from "react";
 import styled from "styled-components";
+import MemoBox from "./Memo";
+import { fonts } from "@styles/fonts";
+import SummaryPane from "../pre/SummaryPane";
+import { PANEL_FIXED_H_LIVE } from "@pages/class/pre/styles";
+import BoardBox from "./BoardBox";
 
 type Role = "student" | "assistant";
 type TabKey = "memo" | "board" | "summary";
@@ -15,8 +19,16 @@ type Props = {
     sumAudioRef: React.RefObject<HTMLAudioElement | null>;
     sidePaneRef: React.RefObject<HTMLDivElement | null>;
   };
-  memo: { docId: number; page: number };
-  board: { docId: number; page: number; canUpload: boolean };
+  memo: {
+    docId: number;
+    pageId?: number | null;
+    pageNumber: number;
+  };
+  board: {
+    docId: number;
+    page: number;
+    pageId?: number | null;
+  };
 };
 
 export default function RightTabs({
@@ -25,10 +37,10 @@ export default function RightTabs({
   // role,
   memo,
   board,
+  summary,
 }: Props) {
   const [tab, setTab] = useState<TabKey>(activeInitial);
 
-  // Stable ids for aria-controls/labeling
   const baseId = useId();
   const tabIds: Record<TabKey, string> = {
     memo: `${baseId}-tab-memo`,
@@ -41,86 +53,40 @@ export default function RightTabs({
     summary: `${baseId}-panel-summary`,
   };
 
-  // Roving tabindex for keyboard a11y
-  const order: TabKey[] = ["memo", "board", "summary"];
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const btnRefs = {
-    memo: useRef<HTMLButtonElement | null>(null),
-    board: useRef<HTMLButtonElement | null>(null),
-    summary: useRef<HTMLButtonElement | null>(null),
-  };
-
-  // Keyboard navigation: Left/Right/Home/End
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-
-    const onKey = (e: KeyboardEvent) => {
-      const i = order.indexOf(tab);
-      let next: TabKey | null = null;
-
-      switch (e.key) {
-        case "ArrowRight":
-          next = order[(i + 1) % order.length];
-          break;
-        case "ArrowLeft":
-          next = order[(i + order.length - 1) % order.length];
-          break;
-        case "Home":
-          next = order[0];
-          break;
-        case "End":
-          next = order[order.length - 1];
-          break;
-        default:
-          break;
-      }
-
-      if (next) {
-        e.preventDefault();
-        setTab(next);
-        btnRefs[next].current?.focus();
-      }
-    };
-
-    el.addEventListener("keydown", onKey);
-    return () => el.removeEventListener("keydown", onKey);
-  }, [tab]);
-
   return (
     <Aside $stack={stack} aria-label="메모, 판서, 요약 패널">
-      <Tablist ref={listRef} role="tablist" aria-label="우측 기능">
+      <Tablist
+        role="tablist"
+        aria-label="우측 기능"
+        aria-orientation="horizontal"
+      >
         <Tab
-          ref={btnRefs.memo}
           id={tabIds.memo}
           role="tab"
           aria-selected={tab === "memo"}
           aria-controls={panelIds.memo}
-          tabIndex={tab === "memo" ? 0 : -1}
           onClick={() => setTab("memo")}
           type="button"
         >
           메모
         </Tab>
+
         <Tab
-          ref={btnRefs.board}
           id={tabIds.board}
           role="tab"
           aria-selected={tab === "board"}
           aria-controls={panelIds.board}
-          tabIndex={tab === "board" ? 0 : -1}
           onClick={() => setTab("board")}
           type="button"
         >
           판서
         </Tab>
+
         <Tab
-          ref={btnRefs.summary}
           id={tabIds.summary}
           role="tab"
           aria-selected={tab === "summary"}
           aria-controls={panelIds.summary}
-          tabIndex={tab === "summary" ? 0 : -1}
           onClick={() => setTab("summary")}
           type="button"
         >
@@ -134,7 +100,13 @@ export default function RightTabs({
         aria-labelledby={tabIds.memo}
         hidden={tab !== "memo"}
       >
-        <MemoBox docId={memo.docId} page={memo.page} />
+        {typeof memo.pageId === "number" && memo.pageId > 0 ? (
+          <MemoBox docId={memo.docId} pageId={memo.pageId} />
+        ) : (
+          <EmptyState role="status" aria-live="polite">
+            이 페이지는 아직 메모를 사용할 수 없어요. 조금만 기다려주세요.
+          </EmptyState>
+        )}
       </Panel>
 
       <Panel
@@ -143,11 +115,18 @@ export default function RightTabs({
         aria-labelledby={tabIds.board}
         hidden={tab !== "board"}
       >
-        <BoardBox
-          docId={board.docId}
-          page={board.page}
-          canUpload={board.canUpload}
-        />
+        {typeof board.pageId === "number" && board.pageId > 0 ? (
+          <BoardBox
+            docId={board.docId}
+            pageId={board.pageId}
+            assetBase={import.meta.env.VITE_BASE_URL}
+            token={localStorage.getItem("access")}
+          />
+        ) : (
+          <EmptyState role="status" aria-live="polite">
+            이 페이지는 아직 판서를 사용할 수 없어요.
+          </EmptyState>
+        )}
       </Panel>
 
       <Panel
@@ -155,7 +134,16 @@ export default function RightTabs({
         role="tabpanel"
         aria-labelledby={tabIds.summary}
         hidden={tab !== "summary"}
-      />
+      >
+        <SummaryPane
+          summaryText={summary.text ?? null}
+          summaryTtsUrl={summary.ttsUrl ?? null}
+          sumAudioRef={summary.sumAudioRef}
+          sidePaneRef={summary.sidePaneRef}
+          stack={stack}
+          panelHeight={PANEL_FIXED_H_LIVE}
+        />
+      </Panel>
     </Aside>
   );
 }
@@ -180,66 +168,63 @@ const Tablist = styled.div`
   gap: 0.5rem;
   width: 100%;
 `;
+
 const Tab = styled.button`
   padding: 0.5rem 1rem;
   border-radius: 999px;
   border: 2px solid #e5e5e5;
-  background: white;
+  background: #fff;
   cursor: pointer;
+  ${fonts.medium24};
+
+  &:hover {
+    border-color: var(--c-grayC, #d1d5db);
+  }
+
   &[aria-selected="true"] {
-    background: var(--c-blue);
-    color: var(--c-white);
-    border-color: var(--c-blue);
+    background: var(--c-blue, #2563eb);
+    color: var(--c-white, #fff);
+    border-color: var(--c-blue, #2563eb);
+  }
+
+  &:focus {
+    outline: none;
+  }
+  &:focus-visible {
+    border-color: var(--c-blue, #2563eb);
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px rgba(37, 99, 235, 0.35);
+
+    &[aria-selected="true"] {
+      box-shadow: 0 0 0 2px var(--c-blue, #2563eb),
+        0 0 0 6px rgba(37, 99, 235, 0.35);
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    transition: border-color 0.15s ease, box-shadow 0.15s ease,
+      background-color 0.15s ease, color 0.15s ease;
+  }
+
+  @media (forced-colors: active) {
+    &:focus-visible {
+      outline: 2px solid CanvasText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
   }
 `;
+
 const Panel = styled.section`
   display: grid;
   gap: 10px;
+
+  &[hidden] {
+    display: none !important;
+  }
 `;
 
-/* --- 더미 컴포넌트(후에 API 연결) --- */
-function MemoBox({ docId, page }: { docId: number; page: number }) {
-  // TODO: /api/page/{pageId}/memo (GET/PUT) 연결
-  return (
-    <section
-      // 사용 표시: 디버깅/테스트용 data-attr로 보존
-      data-doc-id={docId}
-      data-page={page}
-      aria-label={`메모 입력 패널 (문서 ${docId}, 페이지 ${page})`}
-    >
-      <textarea
-        aria-label="메모 입력"
-        style={{
-          width: "100%",
-          minHeight: 240,
-          border: "1px solid var(--c-grayD),",
-          padding: "1rem",
-          borderRadius: "12px",
-        }}
-        placeholder="메모를 입력하세요…"
-      />
-    </section>
-  );
-}
-
-function BoardBox({
-  docId,
-  page,
-  canUpload,
-}: {
-  docId: number;
-  page: number;
-  canUpload: boolean;
-}) {
-  // TODO: 업로드 버튼(assistant만), 이미지 카드 리스트, 수정/삭제
-  return (
-    <section
-      data-doc-id={docId}
-      data-page={page}
-      aria-label={`판서 패널 (문서 ${docId}, 페이지 ${page})`}
-    >
-      {canUpload && <button type="button">사진 업로드</button>}
-      <div aria-label="판서 목록" />
-    </section>
-  );
-}
+const EmptyState = styled.p`
+  margin: 0;
+  color: var(--c-gray9, #666);
+  font-size: 0.875rem;
+`;

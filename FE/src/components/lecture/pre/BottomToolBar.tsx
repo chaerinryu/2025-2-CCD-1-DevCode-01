@@ -1,4 +1,3 @@
-// src/components/lecture/shared/BottomToolbar.tsx
 import { TOOLBAR_GAP, TOOLBAR_H } from "@pages/class/pre/styles";
 import { fonts } from "@styles/fonts";
 import styled from "styled-components";
@@ -12,24 +11,23 @@ type CommonProps = {
   page: number;
   totalPages?: number;
   mode: Mode;
-  onPrev: () => void;
-  onNext: () => void;
+  onPrev: () => void | Promise<void>;
+  onNext: () => void | Promise<void>;
   onToggleMode: () => void;
-  onGoTo: (page: number) => void;
+  onGoTo: (page: number) => void | Promise<void>;
   /** 선택: 화면읽기 보조 음성 */
   speak?: (msg: string) => void;
 };
 
 type PreOnly = {
-  /** 강의 전에서만 사용 */
-  onStart?: () => void;
+  onStart?: () => void | Promise<void>;
 };
 
 type LiveOnly = {
-  /** 강의 중에서만 사용 */
-  onPause?: () => void;
-  onBookmark?: () => void;
-  onEnd?: () => void;
+  onPause?: () => void | Promise<void>;
+  onBookmark?: () => void | Promise<void>;
+  onEnd?: () => void | Promise<void>;
+  pauseLabel?: string;
 };
 
 type Props = CommonProps & PreOnly & LiveOnly;
@@ -45,10 +43,11 @@ export default function BottomToolbar({
   onToggleMode,
   onGoTo,
   speak,
-  onStart, // 있으면 "강의 시작" 버튼 노출
-  onPause, // 있으면 "일시 정지" 노출
-  onBookmark, // 있으면 "북마크" 노출
-  onEnd, // 있으면 "강의 종료" 노출
+  onStart,
+  onPause,
+  onBookmark,
+  onEnd,
+  pauseLabel = "일시 정지",
 }: Props) {
   const [draft, setDraft] = useState<string>(String(page));
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -80,7 +79,7 @@ export default function BottomToolbar({
       speak?.(`이미 ${n}페이지입니다.`);
       return;
     }
-    onGoTo(n);
+    void onGoTo(n);
     speak?.(`${n}페이지로 이동`);
   };
 
@@ -101,7 +100,7 @@ export default function BottomToolbar({
       <Group>
         <Btn
           onClick={() => {
-            onPrev();
+            void onPrev();
             speak?.("이전 페이지로 이동");
           }}
           onFocus={() => speak?.("이전 페이지 버튼")}
@@ -136,7 +135,7 @@ export default function BottomToolbar({
 
         <Btn
           onClick={() => {
-            onNext();
+            void onNext();
             speak?.("다음 페이지로 이동");
           }}
           onFocus={() => speak?.("다음 페이지 버튼")}
@@ -173,19 +172,19 @@ export default function BottomToolbar({
               <Btn
                 type="button"
                 onClick={() => {
-                  onPause();
-                  speak?.("일시 정지");
+                  void onPause();
+                  speak?.(pauseLabel);
                 }}
-                onFocus={() => speak?.("일시 정지 버튼")}
+                onFocus={() => speak?.(`${pauseLabel} 버튼`)}
               >
-                일시 정지
+                {pauseLabel}
               </Btn>
             )}
             {onBookmark && (
               <Btn
                 type="button"
                 onClick={() => {
-                  onBookmark();
+                  void onBookmark();
                   speak?.("북마크 추가");
                 }}
                 onFocus={() => speak?.("북마크 버튼")}
@@ -197,7 +196,7 @@ export default function BottomToolbar({
               <Primary
                 type="button"
                 onClick={() => {
-                  onEnd();
+                  void onEnd();
                   speak?.("강의 종료");
                 }}
                 onFocus={() => speak?.("강의 종료 버튼")}
@@ -217,7 +216,7 @@ export default function BottomToolbar({
             <Primary
               type="button"
               onClick={() => {
-                onStart();
+                void onStart();
                 speak?.("강의가 시작되었습니다.");
               }}
               onFocus={() => speak?.("강의 시작 버튼")}
@@ -248,7 +247,6 @@ const Bar = styled.div`
   border-radius: 0.5rem;
   box-shadow: 0 6px 10px rgba(0, 0, 0, 0.12);
   z-index: 999;
-  max-width: min(92vw, 820px);
   width: max-content;
 `;
 const Group = styled.div`

@@ -88,7 +88,7 @@ const router = createBrowserRouter([
             },
           },
           {
-            path: "/lecture/:courseId/post",
+            path: "/lecture/doc/:courseId/post",
             element: <PostClass />,
             handle: {
               nav: {
