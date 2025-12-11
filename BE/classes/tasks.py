@@ -68,7 +68,7 @@ def run_speech(speech_id, audio_path, page_id, user_id):
         end_time_sec = speech.end_time_sec
         start_time_sec = end_time_sec - duration_sec
 
-        bookmarks = Bookmark.objects.filter(page=page)
+        bookmarks = Bookmark.objects.filter(page=page, user=user)
         for b in bookmarks:
             if start_time_sec <= b.timestamp_sec <= end_time_sec:
                 b.relative_time = round(b.timestamp_sec - start_time_sec)

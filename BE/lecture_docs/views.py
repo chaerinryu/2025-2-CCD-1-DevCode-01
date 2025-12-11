@@ -574,7 +574,7 @@ class PageView(APIView):
         boards_input = request.data.get("boards", [])
 
         note = Note.objects.filter(page=page, user=user).first()
-        speeches = Speech.objects.filter(page=page).order_by("-created_at")
+        speeches = Speech.objects.filter(page=page, user=user).order_by("-created_at")
         bookmarks = BookmarkSerializer(
             Bookmark.objects.filter(page=page, user=user).order_by("-created_at"),
             many=True

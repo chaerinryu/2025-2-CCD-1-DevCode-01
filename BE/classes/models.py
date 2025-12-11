@@ -6,6 +6,7 @@ from lecture_docs.models import *
 #stt
 class Speech(models.Model):
     page = models.ForeignKey(Page, on_delete=models.CASCADE, related_name='speeches', null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='speeches')
     stt = models.TextField(blank=True, null=True)
     stt_tts =  models.JSONField(blank=True, null=True)
     end_time = models.CharField(max_length=10, blank=True, null=True)  # hh:mm:ss

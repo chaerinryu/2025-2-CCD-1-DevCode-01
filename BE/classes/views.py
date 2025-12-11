@@ -33,6 +33,7 @@ class SpeechView(APIView):
 
         speech = Speech.objects.create(
             page=page,
+            user=request.user,
             end_time=timestamp,
             end_time_sec=end_time_sec
         )
@@ -114,7 +115,7 @@ class BookmarkDetailView(APIView):
             return JsonResponse({"error": "해당 북마크를 찾을 수 없습니다."}, status=404)
         self.check_object_permissions(request, bookmark)
         # 해당 북마크와 매칭되는 Speech 찾기
-        speeches = Speech.objects.filter(page=bookmark.page)
+        speeches = Speech.objects.filter(page=bookmark.page, user=request.user)
         matched_speech = next(
             (
                 s for s in speeches
